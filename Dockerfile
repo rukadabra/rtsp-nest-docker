@@ -1,31 +1,54 @@
-# Stage 1: Build the NestJS application
-FROM node:16-alpine as builder
+# Stage 1: Build the application
+FROM node:23.7.0-alpine3.21 AS builder
+WORKDIR /usr/src/app
 
-WORKDIR /app
+# Copy package files and install dependencies
+COPY package.json package-lock.json ./
+RUN npm install -f
 
-# Install dependencies
-COPY package*.json ./
-RUN npm install --only=production -f
+# Copy TypeScript configuration explicitly
+COPY tsconfig*.json ./
 
-# Copy the full application and build it
+# Copy the entire project, including `src/`
 COPY . .
+
+# Debugging: Check if `src/` exists inside the container
+RUN ls -lah src
+
+# Debugging: Check if `hls/` exists and create it if missing
+RUN if [ ! -d "hls" ]; then \
+    echo "hls directory not found. Creating it..."; \
+    mkdir -p hls; \
+    fi
+
+# Debugging: Verify that `hls/` was created
+RUN ls -lah hls
+
+# Build the NestJS application (compiles `src/` into `dist/`)
 RUN npm run build
-RUN mkdir -p /app/hls
 
-# Stage 2: Use jrottenberg/ffmpeg for H.265 (HEVC) support
-FROM jrottenberg/ffmpeg:4.4-ubuntu as ffmpeg
+#Remove node_modules
+RUN rm -rf node_modules
 
-# Install Node.js 
+#only prod dependencies
+RUN npm ci --only=prod -f
 
-WORKDIR /app
+# Debugging: Check if `dist/` was created
+RUN ls -lah dist
 
-# Copy the built application from the builder stage
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/hls ./hls
-  
-# Expose the port used by the NestJS app
+# Stage 2: Create the minimal production image
+FROM node:23.7.0-alpine3.21
+WORKDIR /usr/src/app
+
+# Copy only necessary files from the builder stage
+COPY --from=builder /usr/src/app/node_modules ./node_modules
+COPY --from=builder /usr/src/app/dist ./dist
+COPY --from=builder /usr/src/app/package.json ./
+COPY --from=builder /usr/src/app/hls ./hls
+
+
+# Expose the application port
 EXPOSE 3000
 
-# Start the NestJS app
-CMD ["node", "dist/main.js"]
+# Start the application
+CMD ["npm", "run", "start:prod"]
