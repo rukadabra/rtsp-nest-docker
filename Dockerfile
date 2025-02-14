@@ -40,6 +40,9 @@ RUN ls -lah dist
 FROM node:23.7.0-alpine3.21
 WORKDIR /usr/src/app
 
+# Install FFmpeg for RTSP stream processing
+RUN apk add --no-cache ffmpeg
+
 # Copy only necessary files from the builder stage
 COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/dist ./dist
