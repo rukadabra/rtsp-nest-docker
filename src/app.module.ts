@@ -18,12 +18,13 @@ import { join } from 'path';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply((req, res, next) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
-      next();
-    }).forRoutes('/hls/*');  // Apply to all HLS routes
+    consumer
+      .apply((req, res, next) => {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
+        next();
+      })
+      .forRoutes('/hls/*'); // Apply to all HLS routes
   }
-
 }

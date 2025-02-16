@@ -1,4 +1,9 @@
-import { BadRequestException, Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Post,
+} from '@nestjs/common';
 import { RtspService } from './rtsp.service';
 
 @Controller('rtsp')
@@ -6,7 +11,7 @@ export class RtspController {
   constructor(private readonly rtspService: RtspService) { }
 
   @Post('stop')
-  async stopStream(@Body() body: { url: string }, @Res() res: Response) {
+  async stopStream(@Body() body: { url: string }) {
     if (!body.url) {
       throw new BadRequestException('URL is required to stop the stream.');
     }
@@ -17,17 +22,14 @@ export class RtspController {
   }
 
   @Post('stop-all')
-  async stopAllStreams(@Res() res: Response) {
+  async stopAllStreams() {
     this.rtspService.stopAllStreams();
     return { message: 'All streams stopped successfully.' };
   }
 
-
-
   @Post('start')
   async startBatchStream(
     @Body() body: { urls: { url: string; id: string; project: string }[] },
-    @Res() res: Response,
   ) {
     if (!body.urls || !Array.isArray(body.urls) || body.urls.length === 0) {
       throw new BadRequestException('No URLs provided for streaming');
@@ -38,7 +40,7 @@ export class RtspController {
         try {
           const fileName = await this.rtspService.startHlsStream(urlObj);
           return {
-            ...urlObj,
+            // ...urlObj,
             fileName: fileName.fileName,
             streamUrl: fileName.url,
             status: 'success',
@@ -46,7 +48,7 @@ export class RtspController {
         } catch (error) {
           console.error(`Failed to start stream for ${urlObj.url}:`, error);
           return {
-            ...urlObj,
+            // ...urlObj,
             status: 'error',
             error: error.message,
           };
@@ -57,7 +59,6 @@ export class RtspController {
     return {
       message: 'Batch processing completed',
       results,
-    }
+    };
   }
-
 }
