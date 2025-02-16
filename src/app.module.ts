@@ -4,6 +4,8 @@ import { AppService } from './app.service';
 import { RtspModule } from './rtsp/rtsp.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { PlayerController } from './player/player.controller';
+import { PlayerModule } from './player/player.module';
 
 @Module({
   imports: [
@@ -12,8 +14,9 @@ import { join } from 'path';
       rootPath: join(process.cwd(), 'hls'),
       serveRoot: '/hls',
     }),
+    PlayerModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, PlayerController],
   providers: [AppService],
 })
 export class AppModule implements NestModule {
