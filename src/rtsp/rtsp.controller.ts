@@ -25,19 +25,39 @@ export class RtspController {
 
 
   @Post('start')
-  async startBatchStream(@Body() body: { urls: string[] }, @Res() res: Response) {
-    if (!body.urls || !Array.isArray(body.urls)) {
-      throw new BadRequestException('Something bad happened', {
-        cause: new Error(),
-        description: 'no url found',
-      });
+  async startBatchStream(
+    @Body() body: { urls: { url: string; id: string; project: string }[] },
+    @Res() res: Response,
+  ) {
+    if (!body.urls || !Array.isArray(body.urls) || body.urls.length === 0) {
+      throw new BadRequestException('No URLs provided for streaming');
     }
 
-    const results = body.urls.map((url) => {
-      const fileName = this.rtspService.startHlsStream(url);
-      return { url, fileName: fileName.fileName, streamUrl: `/hls/${fileName.fileName}` };
-    });
+    const results = await Promise.all(
+      body.urls.map(async (urlObj) => {
+        try {
+          const fileName = await this.rtspService.startHlsStream(urlObj);
+          return {
+            ...urlObj,
+            fileName: fileName.fileName,
+            streamUrl: fileName.url,
+            status: 'success',
+          };
+        } catch (error) {
+          console.error(`Failed to start stream for ${urlObj.url}:`, error);
+          return {
+            ...urlObj,
+            status: 'error',
+            error: error.message,
+          };
+        }
+      }),
+    );
 
-    return { message: 'Batch processing completed', results };
+    return {
+      message: 'Batch processing completed',
+      results,
+    }
   }
+
 }

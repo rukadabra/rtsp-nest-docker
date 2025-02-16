@@ -8,94 +8,113 @@ import { ChildProcessWithoutNullStreams } from 'child_process';
 export class RtspService {
   private hlsOutputPath = path.join(process.cwd(), 'hls');
   private ffmpegProcesses: Map<string, ChildProcessWithoutNullStreams> = new Map();
+  private retryDelays: Map<string, number> = new Map(); // Keeps track of retry delays for each stream
 
-  startHlsStream(rtspUrl: string) {
-    if (this.ffmpegProcesses.has(rtspUrl)) {
-      console.log(`Stream for ${rtspUrl} is already running.`);
-      return { message: 'Stream already running', fileName: null };
+  startHlsStream(rtspUrl: {
+    url: string;
+    id: string;
+    project: string;
+  }) {
+    if (this.ffmpegProcesses.has(`${rtspUrl.project}-${rtspUrl.id}`)) {
+      console.log(`Stream for ${rtspUrl.project}-${rtspUrl.id} is already running.`);
+      return { message: 'Stream already running', fileName: `${rtspUrl.project}-${rtspUrl.id}` };
     }
 
     fs.ensureDirSync(this.hlsOutputPath);
 
-    const fileName = `stream-${Date.now()}.m3u8`;
+    const fileName = `stream-${rtspUrl.project}-${rtspUrl.id}.m3u8`;
     const outputPath = path.join(this.hlsOutputPath, fileName);
 
-    const ffmpegProcesses = ffmpeg(rtspUrl)
-      .outputOptions([
-        // '-preset veryfast',
-        // '-g 25',
-        // '-sc_threshold 0',
-        // '-f hls',
-        // '-hls_time 4',
-        // '-hls_list_size 10',
-        // '-hls_flags delete_segments+independent_segments',
-        // '-hls_segment_type mpegts',
-        // '-c:v libx264',
-        // '-c:a aac',
-        // '-b:v 1000k',
-        // '-b:a 128k',
-        //#CONFIG 2
-        // '-preset veryfast', // Fast encoding to reduce latency
-        // '-g 50', // Larger GOP for better stability
-        // '-sc_threshold 0', // Disable scene change detection
-        // '-f hls',
-        // '-hls_time 4', // 4-second segments for smoother playback
-        // '-hls_list_size 10', // Keep 10 segments in the playlist
-        // '-hls_flags delete_segments+independent_segments', // Keyframe alignment and cleanup
-        // '-hls_segment_type mpegts', // Use .ts segments
-        // '-c:v libx264', // Transcode video to H.264
-        // '-c:a aac', // Transcode audio to AAC
-        // '-b:v 1000k', // Set video bitrate
-        // '-b:a 128k' // Set audio bitrate 
-        '-rtsp_transport tcp',
-        '-buffer_size 2000k',
-        '-analyzeduration 10000000',
-        '-probesize 5000000',
-        '-max_delay 500000',
-        '-fflags +genpts',
-        '-flags +low_delay',
+    const ffmpegProcesses = ffmpeg(rtspUrl.url)
+      // .inputOptions([
+      //   '-rtsp_transport tcp',  // Use TCP for more stable streaming
+      //   '-analyzeduration 1000000', // Reduce delay in analysis
+      //   '-probesize 1000000'  // Faster detection of input format
+      // ])
+      // .outputOptions([ 
+      //   '-buffer_size 2000k',  
+      //   '-max_delay 500000',
+      //   '-fflags +genpts',
+      //   '-flags +low_delay',
+      //   '-strict experimental',
+      //   '-preset veryfast',
+      //   '-g 50',
+      //   '-sc_threshold 0',
+      //   '-f hls',
+      //   '-hls_time 4',
+      //   '-hls_list_size 10',
+      //   '-hls_flags delete_segments+independent_segments',
+      //   '-hls_segment_type mpegts',
+      //   '-c:v libx264',
+      //   '-c:a aac',
+      //   '-b:v 1000k',
+      //   '-b:a 128k'
+      // ])
+      .inputOptions([
+        '-rtsp_transport tcp',  // Use TCP for stable connection
+        '-analyzeduration 1000000',  // Reduce analysis delay
+        '-probesize 1000000',  // Faster detection of input format
+        '-fflags nobuffer', // Reduce latency & prevent buffer overflows
+        '-flags low_delay', // Prioritize low latency
         '-strict experimental',
-        '-preset veryfast',
-        '-g 50',
-        '-sc_threshold 0',
+        '-thread_queue_size 512', // Queue size to handle frame drops
+        '-fflags +genpts', // Generate presentation timestamps (fixes async)
+      ])
+      .outputOptions([
+        '-buffer_size 4000k',  // Increase buffer to prevent stuttering
+        '-max_delay 300000',  // Lower delay for smoother playback
+        '-preset ultrafast', // Optimize for lower CPU usage
+        '-tune zerolatency', // Reduce latency & improve streaming stability
+        '-g 50',  // Keyframe interval (balance quality & latency)
+        '-sc_threshold 0',  // Disable scene change detection (prevents random glitches)
         '-f hls',
         '-hls_time 4',
         '-hls_list_size 10',
         '-hls_flags delete_segments+independent_segments',
         '-hls_segment_type mpegts',
         '-c:v libx264',
+        '-crf 23',  // Constant Rate Factor (CRF) for better quality control
         '-c:a aac',
         '-b:v 1000k',
-        '-b:a 128k'
+        '-b:a 128k',
+        '-max_muxing_queue_size 1024'  // Prevents buffer underruns
       ])
       .output(outputPath)
-      .on('start', () => console.log(`HLS stream started for ${rtspUrl} -> ${fileName}`))
+      .on('start', () => {
+        console.log(`HLS stream started for ${rtspUrl.project}-${rtspUrl.id}`);
+        this.retryDelays.set(`${rtspUrl.project}-${rtspUrl.id}`, 0); // Reset retry delay on successful start
+      })
+      .on('stderr', (stderrLine) => {
+        if (stderrLine.includes('Non-monotonous DTS') || stderrLine.includes('error while decoding frame')) {
+          console.log(`⚠️ Detected error for ${rtspUrl.project}-${rtspUrl.id}. Attempting to recover...`);
+          this.bufferAndReconnect(rtspUrl);
+        }
+      })
       .on('error', (err) => {
-        console.error(`HLS stream error for ${rtspUrl}: ${err.message}`);
-        this.ffmpegProcesses.delete(rtspUrl);
+        console.error(`Stream error for ${rtspUrl.project}-${rtspUrl.id}: ${err.message}`);
+        this.bufferAndReconnect(rtspUrl);
       })
       .on('end', () => {
-        console.log(`HLS stream ended for ${rtspUrl}`);
-        this.ffmpegProcesses.delete(rtspUrl);
+        console.log(`HLS stream ended for ${rtspUrl.project}-${rtspUrl.id}`);
+        this.ffmpegProcesses.delete(`${rtspUrl.project}-${rtspUrl.id}`);
       })
       .run() as unknown as ChildProcessWithoutNullStreams;
 
-    this.ffmpegProcesses.set(rtspUrl, ffmpegProcesses);
+    this.ffmpegProcesses.set(`${rtspUrl.project}-${rtspUrl.id}`, ffmpegProcesses);
 
-    console.log(`🚀 Stream output path: ${outputPath}`);
     return { message: 'Stream started', fileName, url: `/hls/${fileName}` };
   }
 
-  stopHlsStream(rtspUrl: string) {
-    const ffmpegProcess = this.ffmpegProcesses.get(rtspUrl);
+  stopHlsStream(id: string) {
+    const ffmpegProcess = this.ffmpegProcesses.get(id);
     if (ffmpegProcess) {
-      console.log(`Stopping stream for ${rtspUrl}...`);
+      console.log(`Stopping stream for ${id}...`);
       ffmpegProcess.kill('SIGINT');
-      this.ffmpegProcesses.delete(rtspUrl);
+      this.ffmpegProcesses.delete(id);
 
-      console.log(`Stream for ${rtspUrl} stopped.`);
+      console.log(`Stream for ${id} stopped.`);
     } else {
-      console.log(`No active stream found for ${rtspUrl}.`);
+      console.log(`No active stream found for ${id}.`);
     }
   }
 
@@ -107,5 +126,23 @@ export class RtspService {
     }
     this.ffmpegProcesses.clear();
     console.log('All streams stopped.');
+  }
+
+  private bufferAndReconnect(rtspUrl: {
+    url: string;
+    id: string;
+    project: string;
+  }) {
+    const retryDelay = this.retryDelays.get(`${rtspUrl.project}-${rtspUrl.id}`) || 1000; // Initial delay of 1 second
+
+    console.log(`Buffering... Will retry in ${retryDelay / 1000} seconds for ${rtspUrl.project}-${rtspUrl.id}`);
+
+    setTimeout(() => {
+      this.stopHlsStream(`${rtspUrl.project}-${rtspUrl.id}`); // Stop the current process
+      console.log(`Reconnecting to ${rtspUrl.project}-${rtspUrl.id}...`);
+      this.startHlsStream(rtspUrl); // Restart the stream
+      const nextDelay = Math.min(retryDelay * 2, 10000); // Increase delay up to a max of 10 seconds
+      this.retryDelays.set(`${rtspUrl.project}-${rtspUrl.id}`, nextDelay);
+    }, retryDelay);
   }
 }
