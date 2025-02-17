@@ -10,7 +10,7 @@ export class PlayerController {
     }
 
     const streamUrls = streams.split(','); // Expecting comma-separated stream URLs
-    const streamUrl = streamUrls?.[0];
+    const streamUrl = `https://stream.gproject.tech/hls/${streamUrls?.[0]}.m3u8`;
 
     const htmlContent = `
 <!DOCTYPE html>
@@ -38,16 +38,28 @@ export class PlayerController {
         width: 100%;
         height: 100%;
         object-fit: cover;
+        display: none; /* Hide until stream starts */
+      }
+      .loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        font-size: 18px;
+        font-family: Arial, sans-serif;
+        display: none;
       }
     </style>
   </head>
   <body>
     <div class="video-container">
       <video id="video" autoplay muted></video>
+      <div id="loading" class="loading">Loading stream...</div>
     </div>
 
     <script>
-      function setupHLS(videoElement, videoSrc) {
+      function setupHLS(videoElement, loadingElement, videoSrc) {
         if (Hls.isSupported()) {
           var hls = new Hls({
             maxBufferLength: 5,
@@ -60,19 +72,25 @@ export class PlayerController {
 
           hls.loadSource(videoSrc);
           hls.attachMedia(videoElement);
+          
+          loadingElement.style.display = "block"; // Show loading at start
 
           hls.on(Hls.Events.MEDIA_ATTACHED, function () {
             console.log("✅ Streaming started for ${streamUrl}");
             videoElement.play();
+            loadingElement.style.display = "none"; // Hide loading when playing
+            videoElement.style.display = "block"; // Show video
           });
 
           hls.on(Hls.Events.ERROR, function (event, data) {
             console.error("❌ HLS.js Error on ${streamUrl}:", data);
-            videoElement.pause(); // Pause on last frame
-            // Reload iframe after delay
+            loadingElement.style.display = "block"; // Show loading again
+            
             setTimeout(() => {
-              window.location.reload();
-            }, 5000); // Reload after 5 seconds
+              console.log("♻️ Retrying stream...");
+              hls.loadSource(videoSrc);
+              hls.attachMedia(videoElement);
+            }, 3000); // Retry after 3 seconds
           });
         } else if (videoElement.canPlayType("application/vnd.apple.mpegurl")) {
           videoElement.src = videoSrc;
@@ -81,12 +99,13 @@ export class PlayerController {
           });
         } else {
           console.warn("❌ Browser not supported for HLS:", videoSrc);
+          loadingElement.style.display = "none"; // Hide loading on unsupported
         }
       }
 
       // Replace with your HLS stream URL
       const streamUrl = "${streamUrl}";
-      setupHLS(document.getElementById("video"), streamUrl);
+      setupHLS(document.getElementById("video"), document.getElementById("loading"), streamUrl);
     </script>
   </body>
 </html>
