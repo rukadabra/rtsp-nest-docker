@@ -69,6 +69,10 @@ export class PlayerController {
           hls.on(Hls.Events.ERROR, function (event, data) {
             console.error("❌ HLS.js Error on ${streamUrl}:", data);
             videoElement.pause(); // Pause on last frame
+            // Reload iframe after delay
+            setTimeout(() => {
+              window.location.reload();
+            }, 5000); // Reload after 5 seconds
           });
         } else if (videoElement.canPlayType("application/vnd.apple.mpegurl")) {
           videoElement.src = videoSrc;
