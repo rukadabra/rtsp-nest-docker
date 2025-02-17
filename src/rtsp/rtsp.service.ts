@@ -107,7 +107,9 @@ export class RtspService {
       })
       .on('end', () => {
         console.log(`HLS stream ended for ${rtspUrl.project}-${rtspUrl.id}`);
-        this.ffmpegProcesses.delete(`${rtspUrl.project}-${rtspUrl.id}`);
+        // Auto Re-run 
+        this.bufferAndReconnect(rtspUrl);
+        // this.ffmpegProcesses.delete(`${rtspUrl.project}-${rtspUrl.id}`);
       })
       .run() as unknown as ChildProcessWithoutNullStreams;
 
