@@ -65,7 +65,7 @@ export const runInIframe = (config: {
                 backBufferLength: 5,
             });
 
-            const videoSrc = `https://stream.gproject.tech/hls/${streamId}.m3u8`;
+            const videoSrc = `http://18.142.226.154:3001/hls/${streamId}.m3u8`;
             hls.loadSource(videoSrc);
             hls.attachMedia(video);
 

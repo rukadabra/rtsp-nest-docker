@@ -48,6 +48,7 @@ COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/dist ./dist
 COPY --from=builder /usr/src/app/package.json ./
 COPY --from=builder /usr/src/app/hls ./hls
+COPY --from=builder /usr/src/app/public ./public
 
 
 # Expose the application port
