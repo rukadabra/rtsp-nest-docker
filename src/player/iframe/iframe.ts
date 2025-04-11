@@ -1,3 +1,5 @@
+import * as path from 'path';
+
 export const runInIframe = (config: {
     autoplay: boolean;
     muted: boolean;
@@ -64,8 +66,7 @@ export const runInIframe = (config: {
                 lowLatencyMode: true,
                 backBufferLength: 5,
             });
-
-            const videoSrc = `http://18.142.226.154:3001/hls/${streamId}.m3u8`;
+            const videoSrc = `/hls/${streamId}.m3u8`;
             hls.loadSource(videoSrc);
             hls.attachMedia(video);
 

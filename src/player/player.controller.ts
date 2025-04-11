@@ -15,8 +15,16 @@ export class PlayerController {
 
     const htmlContent = fullIframe(streamUrls, position)
     res.setHeader('Content-Type', 'text/html');
-    res.setHeader('X-Frame-Options', 'ALLOWALL'); // ✅ Allow embedding in iframe
-    res.setHeader('Access-Control-Allow-Origin', '*'); // ✅ Allow CORS
+
+    // ✅ Allow any domain to embed this iframe
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    // ✅ Allow the page to be framed from any origin (modern method)
+    res.setHeader('Content-Security-Policy', "frame-ancestors *");
+
+    // ❌ Deprecated, but included for legacy TVs/browsers
+    res.setHeader('X-Frame-Options', 'ALLOWALL');
+
     res.send(htmlContent);
   }
 }
